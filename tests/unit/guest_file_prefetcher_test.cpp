@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -288,6 +289,58 @@ void CheckWorkerStepsAside(re2dj::test::Context& context)
     RE2DJ_CHECK_EQ(context, job->loaded(), kLargeBytes);
 }
 
+// A journal left by earlier runs is read ahead: only the paths used twice.
+// The guest's own calls go into it, and the run's end merges them into the
+// file.
+void CheckLearnedReadAhead(re2dj::test::Context& context)
+{
+    const std::filesystem::path overlay =
+        std::filesystem::temp_directory_path() / ("re2dj-learn-" + std::to_string(reinterpret_cast<std::uintptr_t>(&context)));
+    std::error_code code;
+    std::filesystem::remove_all(overlay, code);
+    std::filesystem::create_directories(overlay, code);
+    {
+        std::ofstream journal(overlay / hle::kReadJournalName, std::ios::binary);
+        journal << "2\tr\t65536\tEZ2DJ/BGM.EZW\n1\tr\t4096\tEZ2DJ/KEY.EZW\n";
+    }
+    StreamSource* source = nullptr;
+    {
+        auto owned = std::make_unique<StreamSource>();
+        source = owned.get();
+        hle::GuestFileConfig config;
+        config.chd_root = "EZ2DJ";
+        config.guest_root = "D:\\ez2dj";
+        config.overlay_root = overlay;
+        hle::GuestFiles files;
+        std::string error;
+        RE2DJ_CHECK(context, files.Configure(config, std::move(owned), &error));
+        files.WaitForPrefetch();
+        RE2DJ_CHECK_EQ(context, source->worker_reads.load(),
+                       static_cast<int>(65536 / hle::GuestFilePrefetcher::kPieceBytes));
+        const auto open = files.Open("KEY.EZW", true, false, hle::kOpenExisting);
+        std::vector<std::uint8_t> bytes;
+        RE2DJ_CHECK_EQ(context, files.Read(open.handle, 4096, &bytes), hle::kWin32ErrorSuccess);
+        RE2DJ_CHECK(context, files.Close(open.handle));
+    }
+    re2dj::hle::GuestFileReadJournal saved;
+    {
+        std::ifstream journal(overlay / hle::kReadJournalName, std::ios::binary);
+        saved.Load(journal);
+    }
+    bool key_used_twice = false;
+    bool key_found = false;
+    for (const auto& entry : saved.entries())
+    {
+        key_used_twice = key_used_twice || (entry.kind == hle::GuestFileReadJournal::Kind::kRead &&
+                                            entry.path == "EZ2DJ/KEY.EZW" && entry.uses == 2);
+        key_found = key_found || (entry.kind == hle::GuestFileReadJournal::Kind::kFind && entry.path == "EZ2DJ/KEY.EZW");
+    }
+    RE2DJ_CHECK(context, key_used_twice);
+    RE2DJ_CHECK(context, key_found);
+    RE2DJ_CHECK(context, !std::filesystem::exists(overlay / (std::string(hle::kReadJournalName) + ".tmp"), code));
+    std::filesystem::remove_all(overlay, code);
+}
+
 // Closing with a held job, then destroying everything, does not hang.
 void CheckShutdownWhileHeld(re2dj::test::Context& context)
 {
@@ -314,5 +367,6 @@ void RunGuestFilePrefetcherTests(re2dj::test::Context& context)
     CheckReadsWhilePrefetching(context);
     CheckBudget(context);
     CheckWorkerStepsAside(context);
+    CheckLearnedReadAhead(context);
     CheckShutdownWhileHeld(context);
 }

@@ -1,6 +1,7 @@
 #include "native_guest_module_set.h"
 #include "native_host_services.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -124,7 +125,11 @@ bool NativeGuestModuleSet::Add(hle::modules::GuestModuleDescriptor descriptor,
 
     mappings_.push_back({image.memory, image.mapping.image_size});
     image.memory = nullptr;
-    bindings_.insert(bindings_.end(), staged_bindings.begin(), staged_bindings.end());
+    for (Binding& binding : staged_bindings)
+    {
+        binding_index_.emplace(binding.gate.address.value(), bindings_.size());
+        bindings_.push_back(std::move(binding));
+    }
     *gates = std::move(staged_gates);
     error->clear();
     return true;
@@ -140,15 +145,7 @@ bool NativeGuestModuleSet::Dispatch(const NativeImportGateEvent& event,
         SetError(error, "invalid native guest module dispatch arguments");
         return false;
     }
-    const Binding* binding = nullptr;
-    for (const Binding& candidate : bindings_)
-    {
-        if (candidate.gate.address.value() == event.gate_address)
-        {
-            binding = &candidate;
-            break;
-        }
-    }
+    const Binding* binding = FindBinding(event.gate_address);
     if (binding == nullptr)
     {
         *error = "native guest module gate is unknown";
@@ -163,7 +160,15 @@ bool NativeGuestModuleSet::Dispatch(const NativeImportGateEvent& event,
         *error = "native guest module arguments lie outside the guest stack";
         return false;
     }
-    std::vector<std::uint32_t> arguments(binding->descriptor.argument_count);
+    // Most imports take a few arguments; those fit without an allocation.
+    std::array<std::uint32_t, 16> small_arguments{};
+    std::vector<std::uint32_t> large_arguments;
+    std::span<std::uint32_t> arguments(small_arguments.data(), binding->descriptor.argument_count);
+    if (binding->descriptor.argument_count > small_arguments.size())
+    {
+        large_arguments.resize(binding->descriptor.argument_count);
+        arguments = std::span<std::uint32_t>(large_arguments);
+    }
     if (argument_bytes != 0)
     {
         std::memcpy(arguments.data(),
@@ -214,14 +219,20 @@ const runtime::ImportGate* NativeGuestModuleSet::FindGate(std::string_view modul
 
 const runtime::ImportGate* NativeGuestModuleSet::FindGate(runtime::GuestAddress address) const
 {
-    for (const Binding& binding : bindings_)
-    {
-        if (binding.gate.address == address)
-        {
-            return &binding.gate;
-        }
-    }
-    return nullptr;
+    const Binding* binding = FindBinding(address.value());
+    return binding == nullptr ? nullptr : &binding->gate;
+}
+
+const hle::modules::GuestExportDescriptor* NativeGuestModuleSet::FindExport(runtime::GuestAddress address) const
+{
+    const Binding* binding = FindBinding(address.value());
+    return binding == nullptr ? nullptr : &binding->descriptor;
+}
+
+const NativeGuestModuleSet::Binding* NativeGuestModuleSet::FindBinding(std::uint32_t gate_address) const
+{
+    const auto found = binding_index_.find(gate_address);
+    return found == binding_index_.end() ? nullptr : &bindings_[found->second];
 }
 
 const hle::modules::GuestModuleRegistry& NativeGuestModuleSet::registry() const

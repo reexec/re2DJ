@@ -1248,14 +1248,13 @@ bool FillSurface(const ImportCall& call,
                                          true_color);
     }
     // The rows are contiguous, so one write fills them and leaves one record
-    // in the call log rather than one per row.
-    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(state->pitch) * state->shape.height);
-    for (std::size_t x = 0; x + 1 < pixels.size(); x += 2)
-    {
-        pixels[x] = static_cast<std::uint8_t>(color);
-        pixels[x + 1] = static_cast<std::uint8_t>(color >> 8);
-    }
-    if (!com::WriteBytes(call, state->pixels, pixels, error))
+    // in the call log rather than one per row. Filled a pixel at a time in one
+    // pass: a game clearing every frame does this hundreds of times a second.
+    // Every host is x86, so a pixel's bytes in memory are the guest's order.
+    const std::vector<std::uint16_t> pixels(static_cast<std::size_t>(state->pitch) * state->shape.height / 2, color);
+    const std::span<const std::uint8_t> bytes(reinterpret_cast<const std::uint8_t*>(pixels.data()),
+                                              pixels.size() * sizeof(std::uint16_t));
+    if (!com::WriteBytes(call, state->pixels, bytes, error))
     {
         return false;
     }

@@ -66,7 +66,7 @@ private:
 };
 
 // The guest's own calls into the image source, marked so the prefetcher's
-// worker steps aside while one is under way (#9).
+// worker steps aside while one is under way (#9) and kept in its journal.
 class ForegroundSource final : public GuestFileSource
 {
 public:
@@ -78,6 +78,7 @@ public:
     bool Find(std::string_view relative_path, bool* directory, std::uint64_t* size) const override
     {
         const Scope scope(prefetcher_);
+        prefetcher_->Record(GuestFileReadJournal::Kind::kFind, relative_path, 0);
         return inner_->Find(relative_path, directory, size);
     }
     bool ReadRange(std::string_view relative_path,
@@ -86,6 +87,7 @@ public:
                    std::size_t length) const override
     {
         const Scope scope(prefetcher_);
+        prefetcher_->Record(GuestFileReadJournal::Kind::kRead, relative_path, offset + length);
         return inner_->ReadRange(relative_path, offset, destination, length);
     }
     bool Materialize(std::string_view relative_path, const std::filesystem::path& output) const override
@@ -96,6 +98,7 @@ public:
     bool ListDirectory(std::string_view relative_path, std::vector<storage::Fat32Entry>* entries) const override
     {
         const Scope scope(prefetcher_);
+        prefetcher_->Record(GuestFileReadJournal::Kind::kList, relative_path, 0);
         return inner_->ListDirectory(relative_path, entries);
     }
 
@@ -292,6 +295,10 @@ bool GuestFiles::Configure(GuestFileConfig config,
     prefetcher_ = std::make_unique<GuestFilePrefetcher>(source.get());
     source_ = std::make_unique<ForegroundSource>(std::move(source), prefetcher_.get());
     LoadDeletedList();
+    if (!config_.overlay_root.empty())
+    {
+        prefetcher_->Learn(config_.overlay_root / kReadJournalName);
+    }
     return true;
 }
 
@@ -967,6 +974,7 @@ void GuestFiles::WaitForPrefetch()
 {
     if (prefetcher_ != nullptr)
     {
+        prefetcher_->WaitWarmed();
         prefetcher_->WaitIdle();
     }
 }

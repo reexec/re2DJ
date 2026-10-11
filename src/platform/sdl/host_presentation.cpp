@@ -86,6 +86,7 @@ bool SdlHostPresentation::ShowGuestWindow(std::uint32_t guest_window,
     config.resizable = true;
     config.centered = true;
     config.post_shader = post_shader_.c_str();
+    config.present_sync = present_sync_;
     // Nothing is drawn yet, so the first frame is the guest's cleared screen.
     if (!backend->Initialize(config, error))
     {

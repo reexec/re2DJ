@@ -85,6 +85,7 @@ void RunKernel32CrtTests(re2dj::test::Context& context);
 void RunApiCallRecordTests(re2dj::test::Context& context);
 void RunGuestFilesTests(re2dj::test::Context& context);
 void RunGuestFilePrefetcherTests(re2dj::test::Context& context);
+void RunGuestFileReadJournalTests(re2dj::test::Context& context);
 void RunLoggingTests(re2dj::test::Context& context);
 void RunImportEventLoopTests(re2dj::test::Context& context);
 void RunPeImageTests(re2dj::test::Context& context);

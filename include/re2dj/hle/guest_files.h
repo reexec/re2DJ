@@ -60,6 +60,8 @@ public:
 
 // The overlay file listing the image files the guest deleted.
 inline constexpr const char* kDeletedListName = ".re2dj-deleted";
+// The overlay file of the prefetcher's GuestFileReadJournal.
+inline constexpr const char* kReadJournalName = ".re2dj-readahead";
 
 // CreateFile dispositions (fileapi.h).
 inline constexpr std::uint32_t kCreateNew = 1;
@@ -176,7 +178,8 @@ public:
     static constexpr std::uint64_t kPrefetchMinimumRemaining = 256 * 1024;
     // How many bytes from the start of an open file are read ahead (tests).
     std::uint64_t PrefetchedBytes(std::uint32_t handle) const;
-    // Waits until the background reads are done (tests).
+    // Waits until the background reads, the learned ones included, are done
+    // (tests).
     void WaitForPrefetch();
 
 private:

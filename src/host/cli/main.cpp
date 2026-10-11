@@ -33,6 +33,7 @@
 #include "re2dj/storage/fat32_chd.h"
 #include "re2dj/graphics/color_depth.h"
 #include "re2dj/graphics/post_shader_catalog.h"
+#include "re2dj/graphics/present_sync.h"
 #include "re2dj/hle/hex_bytes.h"
 #include "re2dj/logging/logging.h"
 #include "re2dj/target/target_profile.h"
@@ -187,6 +188,8 @@ struct Options
     // --post-shader (task 455); without it RE2DJ_POST_SHADER, then none.
     bool post_shader_explicit = false;
     std::string post_shader;
+    // --vsync on|off|adaptive; on (the display's retrace) by default.
+    re2dj::graphics::PresentSync present_sync = re2dj::graphics::PresentSync::kVerticalSync;
     bool list_targets = false;
     bool run = false;
     bool positional_target = false;
@@ -371,6 +374,11 @@ void PrintUsage()
         "                      the built-in 'crt' or 'scanline', or a .glsl file\n"
         "                      name in shaders/. Overrides RE2DJ_POST_SHADER. The\n"
         "                      OSD switches it while running.\n"
+        "  --vsync <on|off|adaptive>\n"
+        "                      When a frame is shown: at the display's retrace\n"
+        "                      ('on', the default), at once ('off', for measuring\n"
+        "                      the most frames a run can make; it may tear), or\n"
+        "                      at the retrace unless the frame is late.\n"
         "  --io-config <path>  Keyboard and gamepad I/O mapping INI for the selected target.\n"
         "                      Overrides only the entries it lists; the built-in\n"
         "                      mapping covers the rest.\n"
@@ -908,6 +916,11 @@ bool RunInProcessOriginal(const Options& options,
             options.post_shader_explicit ? &options.post_shader : nullptr,
             std::getenv(re2dj::graphics::kPostShaderVariable));
         g_presentation->SetPostShader(post_shader);
+        g_presentation->SetPresentSync(options.present_sync);
+        if (options.present_sync != re2dj::graphics::PresentSync::kVerticalSync)
+        {
+            LogInfo("present sync    : %s", re2dj::graphics::PresentSyncName(options.present_sync));
+        }
         if (post_shader != re2dj::graphics::kPostShaderNoneId)
         {
             LogInfo("post shader     : %s%s", post_shader.c_str(),
@@ -1279,6 +1292,31 @@ bool ParseOptions(int argc, char** argv, Options* options)
                 return false;
             }
             options->color_depth_explicit = true;
+        }
+        else if (argument == "--vsync")
+        {
+            std::string value;
+            if (!TakeValue(argc, argv, &index, argument, &value))
+            {
+                return false;
+            }
+            if (value == "on")
+            {
+                options->present_sync = re2dj::graphics::PresentSync::kVerticalSync;
+            }
+            else if (value == "off")
+            {
+                options->present_sync = re2dj::graphics::PresentSync::kImmediate;
+            }
+            else if (value == "adaptive")
+            {
+                options->present_sync = re2dj::graphics::PresentSync::kAdaptive;
+            }
+            else
+            {
+                LogError("--vsync must be on, off or adaptive");
+                return false;
+            }
         }
         else if (argument == "--post-shader" || argument.rfind(kPostShaderEquals, 0) == 0)
         {

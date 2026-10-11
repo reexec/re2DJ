@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "native_import_bridge.h"
@@ -41,6 +42,9 @@ public:
 
     const runtime::ImportGate* FindGate(runtime::GuestAddress address) const;
 
+    // The export a gate calls, or null for a gate outside the set.
+    const hle::modules::GuestExportDescriptor* FindExport(runtime::GuestAddress address) const;
+
     const hle::modules::GuestModuleRegistry& registry() const;
 
 private:
@@ -59,6 +63,10 @@ private:
     hle::modules::GuestModuleRegistry registry_;
     std::vector<Mapping> mappings_;
     std::vector<Binding> bindings_;
+    // Gate address to its index in bindings_: every import looks its gate up.
+    std::unordered_map<std::uint32_t, std::size_t> binding_index_;
+
+    const Binding* FindBinding(std::uint32_t gate_address) const;
 };
 
 }  // namespace re2dj::platform::native

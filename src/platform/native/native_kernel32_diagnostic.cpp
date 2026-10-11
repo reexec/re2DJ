@@ -286,11 +286,10 @@ bool NativeKernel32Diagnostic::ReadArgumentString(const NativeImportGateEvent& e
     return ReadGuestString(runtime::GuestAddress(address), value, &error);
 }
 
-const hle::modules::RegisteredGuestExport* NativeKernel32Diagnostic::FindFacadeExport(
+const hle::modules::GuestExportDescriptor* NativeKernel32Diagnostic::FindFacadeExport(
     const NativeImportGateEvent& event) const
 {
-    const runtime::ImportGate* gate = modules_.FindGate(runtime::GuestAddress(event.gate_address));
-    return gate == nullptr ? nullptr : modules_.registry().FindExport(*gate);
+    return modules_.FindExport(runtime::GuestAddress(event.gate_address));
 }
 
 std::string NativeKernel32Diagnostic::GateName(const NativeImportGateEvent& event) const

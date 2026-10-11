@@ -34,16 +34,16 @@
 ## 다음 작업 / Next work
 
 - [ ] in-process 러너 성능 분석(2026-10-05 등록, [측정 결과](analysis/windows-in-process-performance.md))
-  - [ ] 조건별 반복 측정으로 처리량 차이(4th −17%, 1st SE −22%, 5th −11%, 6th −16%, 2nd MOVE +10%) 확정
-  - [ ] vsync off 실행에서 import별 호출 횟수와 샘플링 프로파일로 비용이 큰 경계 찾기
-  - [ ] 전역 게스트 잠금의 넘겨주기 비용과 스레드 직렬화 영향 측정
+  - [x] vsync off 샘플링 프로파일로 비용이 큰 경계 찾기: import마다 export 이름 조회와 DirectDraw `Clear` 채우기. #25에서 고쳐 처리량 +6~+43%([작업 로그](work-logs/20261012-i025-import-path-and-clear-costs.md))
+  - [ ] 남은 비용 프로파일 다시 보기(GPU 드라이버·게스트 코드 외), import별 호출 횟수
+  - [ ] 전역 게스트 잠금의 넘겨주기 비용: 어트랙트 화면에서는 한 스레드만 CPU를 써서 비용 없음(2026-10-12). 게임 플레이 중 측정 남음
   - [ ] 자주 불리는 단순 import(시간·동기화)의 빠른 경로 검토
-  - [ ] Private bytes 증가(최대 1.4 GB)와 6th working set 증가의 원인 확인
-  - [ ] 측정용 vsync off 선택(현재 `--vsync`는 거부됨)을 정식 옵션으로 둘지 결정
+  - [x] Private bytes와 6th working set: 게스트 프로세스마다 처음부터 커밋하는 512MB arena, 6th는 부트스트랩도 러너로 돌아 두 배([분석](analysis/windows-in-process-performance.md#메모리와-스레드--memory-and-threads-2026-10-12))
+  - [x] 측정용 vsync off: `--vsync on|off|adaptive` 정식 옵션(#25)
   - [ ] Linux x86과 x64의 X11 처리량 차이(x86이 51~84%)와 x86 상주 private 메모리(+85~100 MB)의 원인 확인([Linux 비교](analysis/linux-windows-performance.md), #4)
   - [ ] Linux 6th 성능: x64 Debug에서 타이틀 약 40 FPS, x86 Debug에서 모드 선택 전환 중 4.5 FPS
 
-  *In-process runner performance analysis, registered 2026-10-05 ([measurements](analysis/windows-in-process-performance.md)): settle the throughput differences with repeated runs, find the costly boundaries from per-import call counts and a sampling profile of vsync-off runs, measure the global guest lock's hand-over cost and thread serialization, consider fast paths for simple, frequent imports (time, synchronization), explain the private-bytes growth (up to 1.4 GB) and 6th's larger working set, decide whether a vsync-off choice for measuring (`--vsync` is refused now) becomes a real option, explain Linux x86's X11 throughput gap to x64 (51 to 84%) and its extra resident private memory (+85 to 100 MB) ([Linux comparison](analysis/linux-windows-performance.md), #4), and Linux 6th's frame rate in Debug (about 40 fps at the title on x64, 4.5 fps in the mode-select transition on x86).*
+  *In-process runner performance analysis, registered 2026-10-05 ([measurements](analysis/windows-in-process-performance.md)): the costly boundaries found by a vsync-off sampling profile (each import's by-name export lookup and DirectDraw `Clear`'s fill) were fixed in #25 for +6 to +43% throughput, and vsync off for measuring became the `--vsync on|off|adaptive` option; still to do: profile what is left beyond the GPU driver and guest code, with per-import call counts, measure the global guest lock's hand-over cost during gameplay (on attract screens only one thread uses CPU, so it costs nothing there), consider fast paths for simple, frequent imports (time, synchronization), (the private bytes and 6th's working set are explained: a 512 MB arena each guest process commits up front, and 6th's bootstrap running as a runner too), explain Linux x86's X11 throughput gap to x64 (51 to 84%) and its extra resident private memory (+85 to 100 MB) ([Linux comparison](analysis/linux-windows-performance.md), #4), and Linux 6th's frame rate in Debug (about 40 fps at the title on x64, 4.5 fps in the mode-select transition on x86).*
 
 - [ ] Direct3D 광원(`SetLight`·`LightEnable`): 6th는 쓰지 않음. 쓰는 게임이 나오면 측정해 모델
 
@@ -64,11 +64,12 @@
 
   *Shared HLE still to model: the rest of guest threads (`TerminateThread`, resolve-only now, for 1st's thread-shutdown timeout path; `CREATE_SUSPENDED`/`ResumeThread`; `ExitThread`; `GetExitCodeThread`; per-thread message queues; guest code running without imports blocks other threads, design 417); enlarging and shrinking `StretchBlt` (design 421, 1:1 only now); Korean (CP949 double-byte) and proportional text in `DrawTextA`; the CP949 double-byte table; daylight-saving rules and Korean zone names in `GetTimeZoneInformation`; keyboard and mouse window messages and mouse motion (`--io-config` is shared by both hosts since task 444); a real `SetCursor`; guest SEH unwinding across a host frame during a guest call; paths outside the guest root and guest files of directory-dump runs; defined guest entry registers such as EBX; and the noise mixed into Linux sound.*
 
-- [ ] HDD의 CHD에서 곡 로딩·화면 전환 멈춤 줄이기(#9 후속, [작업 로그](work-logs/20261009-i009-chd-file-prefetch.md))
-  - [ ] 처음 읽는 작은 파일(키음 등) 하나마다 HDD 접근 25~48ms가 쌓여 캐시 없는 곡 로딩이 1.1~2.9초 멈춤. 디렉터리·FAT나 곡 폴더 단위 미리 읽기 검토
-  - [ ] `..\..\ranking\ranking_*.bin`을 여는 `CreateFileA`가 CHD를 읽지 않고도 65~80ms 걸리는 원인 확인
+- [ ] HDD의 CHD에서 곡 로딩 멈춤 남은 것(#9·#24 후속, [#24 작업 로그](work-logs/20261012-i024-learned-chd-read-ahead.md))
+  - [ ] #24의 기록 미리 읽기는 같은 모드로 두 곡 이상 한 뒤부터 효과가 있음. 처음 고르는 곡의 곡 전용 파일(`BG/<곡>` 약 400ms, `SOUND/<곡>` 약 200ms)은 그대로
+  - [ ] 사용자가 실제 플레이(HDD, 여러 실행)로 체감 확인
+  - [ ] `..\..\ranking\ranking_*.bin`을 여는 `CreateFileA`가 65~80ms 걸리는 원인 확인. #24 측정에서는 그 경로 조회가 처음 보는 디렉터리 항목 읽기(hunk 5~11개)였음
 
-  *Reduce song-loading and screen-transition stalls from a CHD on an HDD (#9 follow-up): each small file read for the first time (key sounds and the like) adds 25 to 48 ms of HDD access, so a cold song load stalls 1.1 to 2.9 s, so consider reading directories, the FAT or whole song folders ahead; and find why `CreateFileA` of `..\..\ranking\ranking_*.bin` takes 65 to 80 ms without reading the CHD.*
+  *What is left of song-load stalls from a CHD on an HDD (#9 and #24 follow-up, [#24 work log](work-logs/20261012-i024-learned-chd-read-ahead.md)): #24's journal read-ahead helps once two or more songs have been played in the same mode, while a song picked for the first time still loads its own files (`BG/<song>` about 400 ms, `SOUND/<song>` about 200 ms); a user check by real play (HDD, several runs); and why `CreateFileA` of `..\..\ranking\ranking_*.bin` takes 65 to 80 ms, which in #24's measurements was the lookup reading first-seen directory entries (5 to 11 hunks).*
 
 - [ ] 3rd present 비용 변화 원인 — 2026-09-17 01:25~01:49 사이 실행 환경 변화 뒤 present가 약 15 ms 블록되고 60 fps로 바뀜. OSD 코드와 무관함은 A/B로 확인([작업 297 로그](work-logs/20260917-297-imgui-osd-autoplay.md))
 - [ ] `ez2dj3rd` 입력 슬롯 `0x1b`의 물리 바인딩 — 게임 내장 autoplay 토글([분석](analysis/ez2dj3rd-demo-play.md))

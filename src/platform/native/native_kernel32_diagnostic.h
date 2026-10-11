@@ -65,7 +65,7 @@ public:
                             std::string* value);
 
     // The facade export this event calls, or null for a gate outside the facade.
-    const hle::modules::RegisteredGuestExport* FindFacadeExport(
+    const hle::modules::GuestExportDescriptor* FindFacadeExport(
         const NativeImportGateEvent& event) const;
 
     // "module!name" for any gate the session or facade knows.

@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -98,6 +99,15 @@ struct ContinuationContext
     // Calls each guest thread is handling; above one, the guest is inside a
     // guest call.
     std::map<std::uint32_t, std::uint32_t> depths;
+    // What each import gate is, worked out the first time the guest calls
+    // it: every import passes here, and a gate does not change.
+    struct GateInfo
+    {
+        std::string name;
+        const hle::modules::GuestExportDescriptor* facade_export = nullptr;
+        StringArguments strings;
+    };
+    std::unordered_map<std::uint32_t, GateInfo> gates;
     bool stop_requested = false;
     bool stop_redirect_failed = false;
     OriginalRunBoundary stop = OriginalRunBoundary::kStopped;
@@ -275,13 +285,24 @@ bool HandleContinuationGate(const NativeImportGateEvent& event,
     const std::uint32_t thread_id = state->kernel32.CurrentThreadId();
     call.thread_id = thread_id == hle::GuestProcess::kThreadId ? 0 : thread_id;
     std::uint32_t& depth = state->depths[thread_id];
-    call.name = state->kernel32.GateName(event);
+    auto gate = state->gates.find(event.gate_address);
+    if (gate == state->gates.end())
+    {
+        ContinuationContext::GateInfo info;
+        info.name = state->kernel32.GateName(event);
+        info.facade_export = state->kernel32.FindFacadeExport(event);
+        if (info.facade_export != nullptr)
+        {
+            info.strings = StringArgumentIndices(info.facade_export->name);
+        }
+        gate = state->gates.emplace(event.gate_address, std::move(info)).first;
+    }
+    call.name = gate->second.name;
     call.return_address = event.instruction_pointer;
-    const hle::modules::RegisteredGuestExport* facade_export =
-        state->kernel32.FindFacadeExport(event);
+    const hle::modules::GuestExportDescriptor* facade_export = gate->second.facade_export;
     if (facade_export != nullptr)
     {
-        call.argument_count = (std::min)(facade_export->descriptor.argument_count,
+        call.argument_count = (std::min)(facade_export->argument_count,
                                          static_cast<std::uint32_t>(call.arguments.size()));
         const std::size_t argument_bytes = call.argument_count * sizeof(std::uint32_t);
         if (event.stack_pointer >= event.guest_stack_limit &&
@@ -298,7 +319,7 @@ bool HandleContinuationGate(const NativeImportGateEvent& event,
         {
             call.argument_count = 0;
         }
-        const StringArguments strings = StringArgumentIndices(facade_export->descriptor.name);
+        const StringArguments& strings = gate->second.strings;
         if (strings.first >= 0)
         {
             call.text_observed = state->kernel32.ReadArgumentString(
@@ -339,22 +360,28 @@ bool HandleContinuationGate(const NativeImportGateEvent& event,
     {
         LogApiCallOutcome(state->kernel32, call, facade_export != nullptr, output, depth);
     }
-    if (state->calls.size() < kOriginalApiCallLogHead)
+    // The record goes into the run's lists last, by move: it is copied for
+    // every import otherwise.
+    const auto remember = [state, &call]()
     {
-        state->calls.push_back(call);
-    }
-    else
-    {
-        state->tail_calls.push_back(call);
-        if (state->tail_calls.size() > kOriginalApiCallLogTail)
+        if (state->calls.size() < kOriginalApiCallLogHead)
         {
-            state->tail_calls.pop_front();
+            state->calls.push_back(std::move(call));
         }
-    }
+        else
+        {
+            state->tail_calls.push_back(std::move(call));
+            if (state->tail_calls.size() > kOriginalApiCallLogTail)
+            {
+                state->tail_calls.pop_front();
+            }
+        }
+    };
 
     if (!call.handled)
     {
         RequestStop(state, event, OriginalRunBoundary::kContinuationUnhandledImport, call.name);
+        remember();
         return false;
     }
     // A null GetModuleHandleA result is a legitimate Win32 outcome the guest
@@ -363,9 +390,9 @@ bool HandleContinuationGate(const NativeImportGateEvent& event,
     // something Windows would have given it, unless the name is declared
     // absent on Windows too.
     const bool resolver = facade_export != nullptr &&
-                          facade_export->descriptor.name == "GetProcAddress";
+                          facade_export->name == "GetProcAddress";
     const bool loader = facade_export != nullptr &&
-                        facade_export->descriptor.name == "LoadLibraryA";
+                        facade_export->name == "LoadLibraryA";
     const bool absent =
         call.text_observed &&
         ((resolver && state->kernel32.IsAbsentExport(call.arguments[0], call.text)) ||
@@ -397,6 +424,7 @@ bool HandleContinuationGate(const NativeImportGateEvent& event,
     {
         RequestStop(state, event, OriginalRunBoundary::kContinuationCallLimit, call.name);
     }
+    remember();
     return true;
 }
 

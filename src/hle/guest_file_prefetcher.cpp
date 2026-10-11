@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <fstream>
 #include <new>
+#include <system_error>
+#include <vector>
 
 #include <spdlog/logger.h>
 
@@ -37,6 +40,10 @@ GuestFilePrefetcher::~GuestFilePrefetcher()
     if (worker_.joinable())
     {
         worker_.join();
+    }
+    if (learn_worker_.joinable())
+    {
+        learn_worker_.join();
     }
 }
 
@@ -110,6 +117,153 @@ void GuestFilePrefetcher::EndForeground()
     if (foreground_ == 0)
     {
         changed_.notify_all();
+    }
+}
+
+void GuestFilePrefetcher::Learn(std::filesystem::path journal_path)
+{
+    if (source_ == nullptr || journal_path.empty())
+    {
+        return;
+    }
+    std::vector<GuestFileReadJournal::Entry> list;
+    {
+        const std::lock_guard<std::mutex> guard(journal_lock_);
+        if (!journal_path_.empty())
+        {
+            return;
+        }
+        journal_path_ = std::move(journal_path);
+        std::ifstream stream(journal_path_, std::ios::binary);
+        journal_.Load(stream);
+        list = journal_.WarmList(kWarmBudgetBytes);
+    }
+    const std::lock_guard<std::mutex> guard(lock_);
+    if (!stopping_)
+    {
+        learn_worker_ = std::thread([this, list = std::move(list)]() mutable { RunLearned(std::move(list)); });
+    }
+}
+
+void GuestFilePrefetcher::Record(GuestFileReadJournal::Kind kind, std::string_view path, std::uint64_t extent)
+{
+    const std::lock_guard<std::mutex> guard(journal_lock_);
+    if (!journal_path_.empty())
+    {
+        journal_.Record(kind, path, extent, std::chrono::steady_clock::now());
+    }
+}
+
+void GuestFilePrefetcher::WaitWarmed()
+{
+    std::unique_lock<std::mutex> guard(lock_);
+    changed_.wait(guard, [this] { return warmed_ || !learn_worker_.joinable(); });
+}
+
+void GuestFilePrefetcher::SaveJournal()
+{
+    const std::lock_guard<std::mutex> guard(journal_lock_);
+    if (journal_path_.empty() || !journal_.dirty())
+    {
+        return;
+    }
+    // Merged into the file as it is now: another run may have saved since.
+    GuestFileReadJournal saved;
+    {
+        std::ifstream stream(journal_path_, std::ios::binary);
+        saved.Load(stream);
+    }
+    journal_.MergeInto(&saved);
+    // The overlay is made by the guest's first write; a run that never
+    // writes keeps no journal.
+    std::error_code code;
+    if (!std::filesystem::is_directory(journal_path_.parent_path(), code))
+    {
+        return;
+    }
+    std::filesystem::path temporary = journal_path_;
+    temporary += ".tmp";
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        saved.Save(stream);
+        if (!stream.flush())
+        {
+            return;
+        }
+    }
+    std::filesystem::rename(temporary, journal_path_, code);
+    if (!code)
+    {
+        journal_.MarkSaved();
+    }
+}
+
+bool GuestFilePrefetcher::WaitForQuiet()
+{
+    std::unique_lock<std::mutex> guard(lock_);
+    changed_.wait(guard, [this] { return stopping_ || (foreground_ == 0 && !busy_); });
+    return !stopping_;
+}
+
+void GuestFilePrefetcher::RunLearned(std::vector<GuestFileReadJournal::Entry> list)
+{
+    const auto started = std::chrono::steady_clock::now();
+    std::vector<std::uint8_t> buffer(kPieceBytes);
+    std::size_t done = 0;
+    std::uint64_t bytes = 0;
+    for (const GuestFileReadJournal::Entry& entry : list)
+    {
+        bool directory = false;
+        std::uint64_t size = 0;
+        if (!WaitForQuiet())
+        {
+            break;
+        }
+        if (entry.kind == GuestFileReadJournal::Kind::kList)
+        {
+            std::vector<storage::Fat32Entry> entries;
+            static_cast<void>(source_->ListDirectory(entry.path, &entries));
+        }
+        else if (source_->Find(entry.path, &directory, &size) && entry.kind == GuestFileReadJournal::Kind::kRead &&
+                 !directory)
+        {
+            const std::uint64_t end = std::min(entry.extent, size);
+            for (std::uint64_t offset = 0; offset < end && WaitForQuiet(); offset += kPieceBytes)
+            {
+                const auto length = static_cast<std::size_t>(std::min<std::uint64_t>(kPieceBytes, end - offset));
+                if (!source_->ReadRange(entry.path, offset, buffer.data(), length))
+                {
+                    break;
+                }
+                bytes += length;
+            }
+        }
+        ++done;
+    }
+    {
+        const std::lock_guard<std::mutex> guard(lock_);
+        warmed_ = true;
+    }
+    changed_.notify_all();
+    const std::shared_ptr<spdlog::logger> logger = logging::GetLogger();
+    if (logger != nullptr && !list.empty())
+    {
+        logger->info("files: read {} of {} learned paths ahead ({} bytes) in {} ms", done, list.size(), bytes,
+                     std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started)
+                         .count());
+    }
+    for (;;)
+    {
+        bool stopping = false;
+        {
+            std::unique_lock<std::mutex> guard(lock_);
+            stopping = changed_.wait_for(guard, kJournalSaveInterval, [this] { return stopping_; });
+        }
+        SaveJournal();
+        if (stopping)
+        {
+            return;
+        }
     }
 }
 

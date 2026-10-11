@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "re2dj/graphics/color_depth.h"
+#include "re2dj/graphics/present_sync.h"
 #include "re2dj/graphics/window_policy.h"
 #include "re2dj/hle/host_presentation.h"
 #include "re2dj/input/pad_exit_chord.h"
@@ -73,6 +74,9 @@ public:
     // The post-processing shader the window opens with (task 455), chosen by
     // the CLI; `none` by default.
     void SetPostShader(std::string id) { post_shader_ = std::move(id); }
+    // When a present returns, chosen by the CLI's --vsync; the display's
+    // retrace by default.
+    void SetPresentSync(graphics::PresentSync value) { present_sync_ = value; }
 
     bool ShowGuestWindow(std::uint32_t guest_window,
                          std::uint32_t width,
@@ -151,6 +155,7 @@ private:
     std::unique_ptr<ui::Osd> osd_;
     std::vector<std::string> osd_info_lines_;
     std::string post_shader_ = "none";
+    graphics::PresentSync present_sync_ = graphics::PresentSync::kVerticalSync;
     std::unique_ptr<graphics::Sdl3OpenGlBackend> backend_;
     std::uint32_t guest_window_ = 0;
     std::uint32_t logical_width_ = 0;

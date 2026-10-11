@@ -285,6 +285,10 @@ re2dj --hdd <directory> [options]
                       또는 shaders/ 안의 .glsl 파일 이름. 타깃 앞뒤 어디든 되고,
                       RE2DJ_POST_SHADER보다 우선하며, 여러 번 주면 마지막 값을
                       씁니다. 실행 중에는 OSD에서 바꿀 수 있습니다.
+  --vsync <on|off|adaptive>
+                      화면을 언제 보일지. on은 화면 갱신에 맞춤(기본값), off는
+                      바로(최대 처리량 측정용, 찢어짐이 보일 수 있음), adaptive는
+                      늦은 프레임만 기다리지 않음.
   --io-config <path>  선택한 타깃용 키보드·게임패드 I/O mapping INI. 적힌 항목만
                       내장 기본 매핑을 덮어씁니다.
   --version           버전 출력.

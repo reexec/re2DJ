@@ -35,6 +35,7 @@ int main()
     RunApiCallRecordTests(context);
     RunGuestFilesTests(context);
     RunGuestFilePrefetcherTests(context);
+    RunGuestFileReadJournalTests(context);
     RunImportEventLoopTests(context);
     RunGuestPathTests(context);
     RunPeImageTests(context);

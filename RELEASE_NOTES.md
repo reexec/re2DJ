@@ -1,5 +1,49 @@
 # 릴리즈 노트 / Release Notes
 
+## v0.0.74 (2026-10-12)
+
+### 한국어
+
+HDD의 CHD에서 읽었던 경로를 기억해 다음 실행에서 미리 읽고(#24), in-process 러너의 import 경로와 DirectDraw `Clear` 비용을 줄였으며 `--vsync` 옵션을 더했습니다(#25).
+
+#### 해결된 이슈
+
+- [#24](https://github.com/reexec/re2DJ/issues/24) 읽었던 CHD 경로를 기억해 다음 실행에서 미리 읽기(HDD 곡 로딩 멈춤) — PR 없음(로컬 머지)
+- [#25](https://github.com/reexec/re2DJ/issues/25) in-process 러너의 import 경로와 DirectDraw Clear 비용 줄이기, --vsync 옵션 — PR 없음(로컬 머지)
+
+#### 1. 읽었던 경로 미리 읽기 (#24)
+- `hle::GuestFileReadJournal`이 게스트의 조회·목록·읽기를 경로마다 사용 횟수와 함께 기록하고(10초 넘게 쉬었다 다시 쓰면 한 번 더), `overlay/.re2dj-readahead`에 15초마다와 종료 때 디스크의 기록에 합쳐 저장합니다. 다음 실행의 학습 작업 스레드가 두 번 이상 쓰인 경로를 64MiB까지 게스트가 한가할 때 읽습니다.
+- 폴더 통째 미리 읽기는 CHD 안에서 폴더가 흩어져 효과가 없어 넣지 않았습니다(실험은 작업 로그).
+- 캐시를 비운 HDD에서 6th 데모 곡 로딩: 기록 없음 2.17·1.33초, 두 실행 분 기록 0.58·0.65초.
+
+#### 2. import 경로와 `Clear` (#25)
+- 바깥에서 본 샘플링 프로파일로 import마다의 이름 검색(약 30%)과 `Clear`의 버퍼 세 번 훑기(약 25%)를 찾았습니다. 게이트 주소 색인·캐시, 인자 스택 배열, 한 번 채우기로 vsync off 처리량이 6~43%, `Clear`를 쓰는 4th·5th·6th는 17~26% 더 올랐습니다.
+- `--vsync on|off|adaptive`. private bytes(게스트마다 처음부터 커밋하는 512MB arena)와 6th working set(부트스트랩도 러너)의 원인을 분석 문서에 남겼습니다.
+
+#### 3. 검증
+- Windows x86 Debug: 단위 테스트 6,438건 실패 0, CTest 4개. Release·RelWithDebInfo 빌드. WSL Linux x64·x86·clang(경고를 오류로): CTest 각 5개.
+
+### English
+
+The CHD paths read are remembered and read ahead in later runs (#24), and the in-process runner's import path and DirectDraw `Clear` cost less, with a `--vsync` option (#25).
+
+#### Resolved issues
+
+- [#24](https://github.com/reexec/re2DJ/issues/24) Remember the CHD paths read and read them ahead in later runs (song-load stalls on an HDD) — no PR (local merge)
+- [#25](https://github.com/reexec/re2DJ/issues/25) Cut the in-process runner's import path and DirectDraw Clear costs, and a --vsync option — no PR (local merge)
+
+#### 1. Reading remembered paths ahead (#24)
+- `hle::GuestFileReadJournal` records the guest's lookups, listings and reads per path with a use count (one more after 10 s without it) and is saved to `overlay/.re2dj-readahead` every 15 s and at the end, merged into the journal on disk; the next run's learning worker reads the paths used twice or more, up to 64 MiB, while the guest is idle.
+- Reading whole directories ahead did not help, the directories lying scattered in the CHD, and was left out (experiments in the work log).
+- 6th's demo song loads from an HDD with the caches emptied: 2.17 and 1.33 s with no journal, 0.58 and 0.65 s with two runs' journal.
+
+#### 2. The import path and `Clear` (#25)
+- An outside sampling profile found the by-name lookup on every import (about 30%) and `Clear` passing over its buffer three times (about 25%); a gate-address index and cache, arguments in a stack array and a one-pass fill raised vsync-off throughput by 6 to 43%, and by 17 to 26% more for 4th, 5th and 6th, which use `Clear`.
+- `--vsync on|off|adaptive`. The analysis document records the causes of the private bytes (a 512 MB arena each guest commits up front) and 6th's working set (its bootstrap runs as a runner too).
+
+#### 3. Verification
+- Windows x86 Debug: 6,438 unit checks, 0 failures, 4 CTest tests; Release and RelWithDebInfo build. WSL Linux x64, x86 and clang (warnings as errors): 5 CTest tests each.
+
 ## v0.0.73 (2026-10-11)
 
 ### 한국어
