@@ -49,3 +49,12 @@
   *Test results (no failures):*
   - *Windows x86: all 6 CTest tests pass, 5,680 unit checks.*
   - *Linux x64 and x86: all 4 CTest tests pass, 5,677 unit checks.*
+
+## 2026-10-11 — 데모 BGA 확인 / Demo BGA check
+
+- Windows 실행에서 데모 BGA가 아예 나오지 않았다. API 기록에서 데모 중 `BG\` 폴더를 한 번도 열지 않았다.
+- 원본은 BGA를 불러오기 전에 프로파일의 `UseBackground`를 읽는다(`0x004187e2`, `0x00412240`). 키가 없으면 값을 쓰지 않아 지역 변수 `[esp+4]`가 스택에 남은 값 그대로다. 그래서 키가 없으면 BGA 여부가 우연에 달린다.
+- 당시 `overlays/ez2dj6th/EZ2DJ.ini`에는 `UseBackground`·`UseGameOver`·`FullScreen`·`TestSongName` 등이 빠져 있었다(예전 실행이 기본값으로 다시 저장한 것으로 보임). 게스트 메모리의 KProfile 항목을 읽어, overlay 없이 CHD 원본 INI를 쓰면 `UseBackground = 1`임을 확인했다.
+- 사용자 동의로 overlay INI를 지운 뒤 사용자가 데모 BGA가 나오고 상태가 괜찮음을 확인했다. Linux에서 보였던 색 노이즈는 곡 BG 폴더의 `noise0000~0004.abm` 같은 원본 연출로 보고 TODO에서 닫는다.
+
+  *2026-10-11, demo BGA check: on Windows the demo showed no BGA at all, and the API trace never opened the `BG\` folder. Before loading a BGA the original reads `UseBackground` from its profile (`0x004187e2`, `0x00412240`); a missing key leaves the local `[esp+4]` holding whatever the stack had, so without the key the BGA is a matter of chance. `overlays/ez2dj6th/EZ2DJ.ini` lacked `UseBackground`, `UseGameOver`, `FullScreen`, `TestSongName` and others (apparently re-saved with defaults by an earlier run); reading the KProfile entries in guest memory showed `UseBackground = 1` with the CHD's own INI. With the user's agreement the overlay INI was removed, and the user confirmed the demo BGA shows and looks right. The colour noise seen on Linux is taken as the original's effect (the song's BG folder carries `noise0000` to `noise0004.abm`) and closed in the TODO.*

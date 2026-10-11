@@ -45,11 +45,9 @@
 
   *In-process runner performance analysis, registered 2026-10-05 ([measurements](analysis/windows-in-process-performance.md)): settle the throughput differences with repeated runs, find the costly boundaries from per-import call counts and a sampling profile of vsync-off runs, measure the global guest lock's hand-over cost and thread serialization, consider fast paths for simple, frequent imports (time, synchronization), explain the private-bytes growth (up to 1.4 GB) and 6th's larger working set, decide whether a vsync-off choice for measuring (`--vsync` is refused now) becomes a real option, explain Linux x86's X11 throughput gap to x64 (51 to 84%) and its extra resident private memory (+85 to 100 MB) ([Linux comparison](analysis/linux-windows-performance.md), #4), and Linux 6th's frame rate in Debug (about 40 fps at the title on x64, 4.5 fps in the mode-select transition on x86).*
 
-- [ ] EZ2DJ 6th 남은 확인
-  - [ ] 데모 플레이의 BGA 자리에 보이는 색 노이즈가 원본 연출인지 확인
-  - [ ] 광원(`SetLight`·`LightEnable`): 6th는 쓰지 않음. 쓰는 게임이 나오면 측정해 모델
+- [ ] Direct3D 광원(`SetLight`·`LightEnable`): 6th는 쓰지 않음. 쓰는 게임이 나오면 측정해 모델
 
-  *EZ2DJ 6th, what is left: check whether the colour noise in the demo's BGA area is the original's own effect; and lights (`SetLight`, `LightEnable`), which 6th does not use, to be measured and modelled when a game does.*
+  *Direct3D lights (`SetLight`, `LightEnable`): 6th does not use them; measure and model them when a game does.*
 
 - [ ] 공용 HLE의 남은 모형 / Shared HLE still to model
   - [ ] 게스트 스레드의 남은 것: `TerminateThread`(1st의 스레드 종료 시간 초과 경로, 지금은 resolve-only), `CREATE_SUSPENDED`/`ResumeThread`, `ExitThread`, `GetExitCodeThread`, 스레드별 메시지 큐. import 없이 도는 게스트 코드는 다른 스레드를 막음(설계 417)
