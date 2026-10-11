@@ -36,3 +36,7 @@
 
   *CI: after the branch push, `ci` [run 38048810912](https://github.com/reexec/re2DJ/actions/runs/38048810912) passed `windows-x86` (MSVC, the WinHTTP download and unit tests included), `linux-x86`, and `linux-x64` gcc and clang.*
 
+
+- Windows 확인(2026-10-11): 사용자가 Windows 릴리스 설치에서 런처의 Update로 실제 교체와 다시 시작이 잘 되는 것을 확인했다. 위 "남은 것"의 Windows 사용자 확인이 끝났다.
+
+  *Windows check (2026-10-11): the user confirmed that the launcher's Update replaces and restarts a Windows release install correctly. The Windows user check left open above is done.*
