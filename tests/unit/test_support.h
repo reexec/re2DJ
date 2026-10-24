@@ -113,6 +113,7 @@ void RunLegacyDrawCommandTests(re2dj::test::Context& context);
 void RunPresentationFilterTests(re2dj::test::Context& context);
 void RunPresentIntervalHistogramTests(re2dj::test::Context& context);
 void RunPostShaderTests(re2dj::test::Context& context);
+void RunPostShaderPresetTests(re2dj::test::Context& context);
 void RunGlRendererIdentityTests(re2dj::test::Context& context);
 void RunPresentSyncTests(re2dj::test::Context& context);
 void RunWindowPolicyTests(re2dj::test::Context& context);

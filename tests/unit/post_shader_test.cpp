@@ -14,7 +14,8 @@ using re2dj::graphics::BuildPostShaderProgramSource;
 using re2dj::graphics::ChoosePostShader;
 using re2dj::graphics::FindPostShader;
 using re2dj::graphics::ListPostShaders;
-using re2dj::graphics::LoadPostShaderText;
+using re2dj::graphics::LoadPostShaderPreset;
+using re2dj::graphics::PostShaderPreset;
 using re2dj::graphics::PostShaderEntry;
 using re2dj::graphics::PostShaderProgramSource;
 
@@ -92,32 +93,57 @@ void CheckCatalog(re2dj::test::Context& context)
     tree.WriteText("notes.txt", "not a shader");
     tree.MakeDirectory("nested.glsl");
     const std::vector<PostShaderEntry> entries = ListPostShaders(tree.root());
-    RE2DJ_CHECK_EQ(context, entries.size(), std::size_t{4});
-    if (entries.size() == 4)
+    RE2DJ_CHECK_EQ(context, entries.size(), std::size_t{7});
+    if (entries.size() == 7)
     {
         RE2DJ_CHECK_EQ(context, entries[0].id, std::string("crt"));
         RE2DJ_CHECK(context, entries[0].builtin);
         RE2DJ_CHECK_EQ(context, entries[1].id, std::string("scanline"));
-        RE2DJ_CHECK_EQ(context, entries[2].id, std::string("a_shader.glsl"));
-        RE2DJ_CHECK(context, !entries[2].builtin);
-        RE2DJ_CHECK_EQ(context, entries[3].id, std::string("b_shader.glsl"));
+        RE2DJ_CHECK_EQ(context, entries[2].id, std::string("fsr"));
+        RE2DJ_CHECK_EQ(context, entries[3].id, std::string("scalefx"));
+        RE2DJ_CHECK_EQ(context, entries[4].id, std::string("anime4k"));
+        RE2DJ_CHECK(context, entries[4].builtin);
+        RE2DJ_CHECK_EQ(context, entries[5].id, std::string("a_shader.glsl"));
+        RE2DJ_CHECK(context, !entries[5].builtin);
+        RE2DJ_CHECK_EQ(context, entries[6].id, std::string("b_shader.glsl"));
     }
-    for (const char* id : {"crt", "scanline", "a_shader.glsl"})
+    // Every built-in and file loads as a chain whose passes all parse. fsr,
+    // scalefx and anime4k are chains of 2, 5 and 5 (#27); fsr's last pass
+    // draws into the window like a single pass, while scalefx and anime4k
+    // end at a size of their own that the stock pass scales.
+    const struct
     {
-        const PostShaderEntry* entry = FindPostShader(entries, id);
+        const char* id;
+        std::size_t passes;
+        bool parameters;
+        bool to_window;
+    } kExpected[] = {
+        {"crt", 1, true, true},      {"scanline", 1, true, true},   {"fsr", 2, true, true},
+        {"scalefx", 5, true, false}, {"anime4k", 5, false, false},  {"a_shader.glsl", 1, true, true},
+    };
+    for (const auto& expected : kExpected)
+    {
+        const PostShaderEntry* entry = FindPostShader(entries, expected.id);
         RE2DJ_CHECK(context, entry != nullptr);
-        std::string text;
         std::string error;
-        PostShaderProgramSource source;
-        RE2DJ_CHECK(context, entry != nullptr && LoadPostShaderText(*entry, &text, &error));
-        RE2DJ_CHECK(context, BuildPostShaderProgramSource(text, &source, &error));
-        RE2DJ_CHECK(context, !source.parameters.empty());
+        PostShaderPreset preset;
+        RE2DJ_CHECK(context, entry != nullptr && LoadPostShaderPreset(*entry, &preset, &error));
+        RE2DJ_CHECK_EQ(context, preset.passes.size(), expected.passes);
+        bool parameters = false;
+        for (const auto& pass : preset.passes)
+        {
+            PostShaderProgramSource source;
+            RE2DJ_CHECK(context, BuildPostShaderProgramSource(pass.text, &source, &error));
+            parameters = parameters || !source.parameters.empty();
+        }
+        RE2DJ_CHECK_EQ(context, parameters, expected.parameters);
+        RE2DJ_CHECK(context, !preset.passes.empty() && preset.passes.back().to_window == expected.to_window);
     }
     RE2DJ_CHECK(context, FindPostShader(entries, "none") == nullptr);
     RE2DJ_CHECK(context, FindPostShader(entries, "notes.txt") == nullptr);
 
     // A missing directory still lists the built-ins.
-    RE2DJ_CHECK_EQ(context, ListPostShaders(tree.root() / "missing").size(), std::size_t{2});
+    RE2DJ_CHECK_EQ(context, ListPostShaders(tree.root() / "missing").size(), std::size_t{5});
 }
 
 // The command line wins, then a non-empty environment value, then none.

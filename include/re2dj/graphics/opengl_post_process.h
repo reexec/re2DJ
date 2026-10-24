@@ -1,6 +1,7 @@
 #ifndef RE2DJ_GRAPHICS_OPENGL_POST_PROCESS_H_
 #define RE2DJ_GRAPHICS_OPENGL_POST_PROCESS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -46,16 +47,28 @@ public:
     // Whether a shader is selected, so Present draws through it.
     bool active() const;
 
-    // Makes the shader's program current and uploads its uniforms for one
-    // present: the guest's texture on unit 0 at `input_*` (its logical size,
-    // also reported as TextureSize), drawn into `output_*` window pixels.
-    // The caller then draws the unit square with VertexCoord, COLOR and
-    // TexCoord in the slots above, and makes its own program current again.
-    // False, issuing no GL call, when no shader is selected.
-    bool UseForPresent(std::uint32_t input_width,
+    // Runs the chain for one present. `source_texture` is the guest's picture,
+    // bound on unit 0 by the caller, at `input_*` (its logical size, also
+    // reported as TextureSize); the picture lands in the window viewport at
+    // `viewport_*` of `output_*` pixels. Every pass but the last is drawn
+    // here into a target of its own (#27); on return the last pass's program
+    // is current with its input on unit 0 and the window viewport set, and
+    // the caller draws the unit square with VertexCoord, COLOR and TexCoord
+    // in the slots above, then makes its own program current again. False,
+    // issuing no GL call, when no shader is selected; also false, the shader
+    // dropped and last_error set, when a pass's target cannot be made, with
+    // the window target, the viewport and the caller's texture on unit 0
+    // restored and no program current, so the caller makes its own current
+    // before drawing.
+    bool UseForPresent(std::uint32_t source_texture,
+                       std::uint32_t input_width,
                        std::uint32_t input_height,
+                       std::int32_t viewport_x,
+                       std::int32_t viewport_y,
                        std::uint32_t output_width,
                        std::uint32_t output_height);
+    // How many passes the selected shader has; 0 with none selected.
+    std::size_t pass_count() const;
 
     const std::vector<PostShaderEntry>& catalog() const override;
     const std::string& shader_directory() const override;

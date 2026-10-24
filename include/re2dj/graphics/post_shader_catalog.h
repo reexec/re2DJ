@@ -6,11 +6,14 @@
 #include <string_view>
 #include <vector>
 
+#include "re2dj/graphics/post_shader_preset.h"
+
 namespace re2dj::graphics
 {
 
 // The post-processing shaders a run can choose from (task 455): the ones built
-// into the executable and the `.glsl` files in the shader directory. Neither
+// into the executable and the `.glsl` files and `.glslp` presets (#27) in the
+// shader directory. Neither
 // the command line nor the OSD needs GL to list them, so this module has none.
 
 // The id that selects no pass at all, and the environment variable read when
@@ -21,7 +24,7 @@ inline constexpr const char* kPostShaderVariable = "RE2DJ_POST_SHADER";
 struct PostShaderEntry
 {
     // Built-ins are a bare name (`crt`); files are their file name with its
-    // extension (`my_crt.glsl`), so the two can never collide.
+    // extension (`my_crt.glsl`, `my_chain.glslp`), so the two can never collide.
     std::string id;
     bool builtin = false;
     // Empty for a built-in.
@@ -34,8 +37,8 @@ struct PostShaderEntry
 [[nodiscard]] std::filesystem::path ResolvePostShaderDirectory(
     const std::filesystem::path& executable_directory);
 
-// Built-ins first in a fixed order, then the directory's regular `.glsl`
-// files sorted by name. A missing or unreadable directory lists built-ins only.
+// Built-ins first in a fixed order, then the directory's regular `.glsl` and
+// `.glslp` files sorted by name. A missing or unreadable directory lists built-ins only.
 [[nodiscard]] std::vector<PostShaderEntry> ListPostShaders(
     const std::filesystem::path& directory);
 
@@ -43,10 +46,12 @@ struct PostShaderEntry
 [[nodiscard]] const PostShaderEntry* FindPostShader(
     const std::vector<PostShaderEntry>& entries, std::string_view id);
 
-// The shader text: the embedded source for a built-in, the file's bytes
-// otherwise. False, with `error` set, when a file cannot be read.
-[[nodiscard]] bool LoadPostShaderText(const PostShaderEntry& entry,
-                                      std::string* text, std::string* error);
+// The shader's passes: a `.glsl` file or built-in as one pass into the window,
+// a `.glslp` preset with its shaders read beside it (embedded ones for a
+// built-in). False, with `error` set, when a file cannot be read or the preset
+// does not parse.
+[[nodiscard]] bool LoadPostShaderPreset(const PostShaderEntry& entry,
+                                        PostShaderPreset* preset, std::string* error);
 
 // The shader a run starts with: the command line's id when it gave one,
 // otherwise the environment variable's when it is set and not empty,

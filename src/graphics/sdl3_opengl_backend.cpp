@@ -1703,10 +1703,18 @@ bool Sdl3OpenGlBackend::Present(std::string* error)
     // it, in the unit square its MVPMatrix maps to the viewport (task 455).
     const bool post_processed =
         impl_->post_process != nullptr &&
-        impl_->post_process->UseForPresent(impl_->logical_width,
+        impl_->post_process->UseForPresent(impl_->render_color_texture,
+                                           impl_->logical_width,
                                            impl_->logical_height,
+                                           presentation_x,
+                                           presentation_y,
                                            static_cast<std::uint32_t>(presentation_width),
                                            static_cast<std::uint32_t>(presentation_height));
+    if (!post_processed && impl_->post_process != nullptr)
+    {
+        // A chain that failed part way leaves no program current.
+        impl_->use_program(impl_->program);
+    }
     if (post_processed)
     {
         // The unit square's y runs up, as the texture's rows do.

@@ -63,6 +63,7 @@ int main()
     RunPresentationFilterTests(context);
     RunPresentIntervalHistogramTests(context);
     RunPostShaderTests(context);
+    RunPostShaderPresetTests(context);
     RunGlRendererIdentityTests(context);
     RunPresentSyncTests(context);
     RunWindowPolicyTests(context);

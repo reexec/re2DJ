@@ -380,23 +380,54 @@ add_library(re2dj_legacy_graphics STATIC
     src/graphics/present_pacer.cpp
     src/graphics/presentation_filter.cpp
     src/graphics/post_shader_catalog.cpp
+    src/graphics/post_shader_preset.cpp
     src/graphics/post_shader_source.cpp
     src/graphics/true_color.cpp
 )
 target_include_directories(re2dj_legacy_graphics PUBLIC include)
 target_link_libraries(re2dj_legacy_graphics PRIVATE re2dj_warnings)
 
-# Task 455: the built-in post-processing shaders are embedded from their .glsl
-# sources at configure time, so a package never has to ship them. Editing one
-# re-runs the configure step.
+# Task 455, #27: the built-in post-processing shaders are embedded from their
+# sources at configure time, so a package never has to ship them. Each file is
+# split into raw string pieces of at most 12000 bytes, below MSVC's limit on a
+# single literal. Editing one re-runs the configure step.
 set(RE2DJ_POST_SHADER_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/graphics/post_shaders")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${RE2DJ_POST_SHADER_SOURCE_DIR}/crt.glsl"
-    "${RE2DJ_POST_SHADER_SOURCE_DIR}/scanline.glsl"
-    "${RE2DJ_POST_SHADER_SOURCE_DIR}/post_shader_builtins.inc.in"
+set(RE2DJ_POST_SHADER_BUILTIN_NAMES
+    crt.glsl
+    scanline.glsl
+    fsr/fsr.glslp
+    fsr/easu.glsl
+    fsr/rcas.glsl
+    scalefx/scalefx.glslp
+    scalefx/scalefx-pass0.glsl
+    scalefx/scalefx-pass1.glsl
+    scalefx/scalefx-pass2.glsl
+    scalefx/scalefx-pass3.glsl
+    scalefx/scalefx-pass4.glsl
+    anime4k/anime4k.glslp
+    anime4k/conv0.glsl
+    anime4k/conv1.glsl
+    anime4k/conv2.glsl
+    anime4k/conv3.glsl
+    anime4k/depth-to-space.glsl
 )
-file(READ "${RE2DJ_POST_SHADER_SOURCE_DIR}/crt.glsl" RE2DJ_POST_SHADER_CRT)
-file(READ "${RE2DJ_POST_SHADER_SOURCE_DIR}/scanline.glsl" RE2DJ_POST_SHADER_SCANLINE)
+set(RE2DJ_POST_SHADER_BUILTIN_FILES "")
+foreach(name IN LISTS RE2DJ_POST_SHADER_BUILTIN_NAMES)
+    set(path "${RE2DJ_POST_SHADER_SOURCE_DIR}/${name}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${path}")
+    file(READ "${path}" text)
+    string(LENGTH "${text}" length)
+    set(pieces "")
+    set(offset 0)
+    while(offset LESS length)
+        string(SUBSTRING "${text}" ${offset} 12000 piece)
+        string(APPEND pieces "R\"re2dj_glsl(${piece})re2dj_glsl\"\n")
+        math(EXPR offset "${offset} + 12000")
+    endwhile()
+    string(APPEND RE2DJ_POST_SHADER_BUILTIN_FILES "    {\"${name}\",\n${pieces}    },\n")
+endforeach()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${RE2DJ_POST_SHADER_SOURCE_DIR}/post_shader_builtins.inc.in")
 configure_file(
     "${RE2DJ_POST_SHADER_SOURCE_DIR}/post_shader_builtins.inc.in"
     "${CMAKE_CURRENT_BINARY_DIR}/generated/re2dj/graphics/post_shader_builtins.inc"
@@ -763,6 +794,7 @@ if(RE2DJ_BUILD_TESTS)
         tests/unit/temporary_tree.cpp
         tests/unit/present_interval_histogram_test.cpp
         tests/unit/post_shader_test.cpp
+        tests/unit/post_shader_preset_test.cpp
         tests/unit/gl_renderer_identity_test.cpp
         tests/unit/present_sync_test.cpp
         tests/unit/window_policy_test.cpp

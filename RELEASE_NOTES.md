@@ -1,5 +1,49 @@
 # 릴리즈 노트 / Release Notes
 
+## v0.0.75 (2026-10-25)
+
+### 한국어
+
+화면 업스케일 셰이더 `fsr`(AMD FSR 1 EASU+RCAS)·`scalefx`(ScaleFX)·`anime4k`(Anime4K CNN x2 S)를 내장하고, 화면 셰이더가 libretro 형식 `.glslp` preset으로 여러 pass를 잇습니다(#26, #27).
+
+#### 해결된 이슈
+
+- [#26](https://github.com/reexec/re2DJ/issues/26) 내장 화면 셰이더 fsr(AMD FSR 1 EASU) — PR 없음(로컬 머지)
+- [#27](https://github.com/reexec/re2DJ/issues/27) 다단계 화면 셰이더(.glslp)와 fsr RCAS·ScaleFX·Anime4K — PR 없음(로컬 머지)
+
+#### 1. 업스케일러 (#26, #27)
+- DLSS처럼 여러 프레임을 모으는 업스케일러는 모션 벡터·깊이가 없는 2D 게임에 쓸 수 없어, 프레임 하나만 보는 셋을 넣었습니다. `fsr`는 `ffx_fsr1.h`의 EASU·RCAS를 GLSL 1.20으로 옮겼고(`FSR_SHARPNESS`), `scalefx`는 libretro glsl-shaders의 다섯 pass를 그대로, `anime4k`는 bloc97의 mpv 훅 다섯 개를 변환했습니다(가중치 그대로, y 뒤집음). 셋 다 MIT이며 `THIRD_PARTY_NOTICES.md`에 적었습니다.
+- 4K 전체 화면 비교: `fsr`가 가장 선명(RCAS의 밝은 테는 선명도로 조절), `scalefx`는 픽셀아트용이라 CG 글자가 딱딱해짐, `anime4k`는 잡티 없이 적당히 선명. 4th vsync off: `none` 799, `fsr` 688, `scalefx` 538, `anime4k` 565fps.
+
+#### 2. 다단계 파이프라인 (#27)
+- `graphics/post_shader_preset.h`: `.glslp` 부분집합(`shaders`, `shaderN`, `scale_typeN`/`_x`/`_y`, `scaleN`/`_x`/`_y`, `filter_linearN`, `float_framebufferN`; libretro 규칙대로 `#`·BOM·우선순위). 내장은 포함 파일 묶음(`kPostShaderBuiltinFiles`, CMake가 17개 파일을 12000바이트 조각으로)이 되었고 `LoadPostShaderPreset`이 preset의 상대 경로를 풉니다.
+- `OpenGlPostProcess`: pass마다 프로그램과 FBO 대상(RGBA8/RGBA16F), `UseForPresent`가 체인을 그리고 마지막 pass만 호출자에게 남기며, 배율 있는 마지막 pass는 stock pass가 창에 복사합니다. 텍스처 unit 0 `Texture`, 1 `OrigTexture`, 2부터 `PassPrevN`. 대상 실패 때는 GL 오류를 비우고 창 대상·viewport·unit 0을 되돌립니다.
+- 커밋 전 검토(다섯 관점, 지적별 반박 검증 셋)로 확정된 11건을 고쳤습니다. 단일 pass 셰이더의 `OrigTexture`가 빈 unit을 가리키던 회귀, FBO 실패가 Present 전체를 실패시키던 것, 체인 중간 실패의 복원, 파서의 libretro 호환, 문서 불일치.
+
+#### 3. 검증
+- Windows x86 Debug: 단위 테스트 6,519건 실패 0(`post_shader_preset_test` 추가), CTest 4개. Release, GL probe 12개. WSL Linux x64·x86·clang(경고를 오류로): CTest 각 5개. 실제 실행: 4th·6th에서 세 셰이더, 사용자 `.glslp`, `OrigTexture` 단일 pass.
+
+### English
+
+The screen upscaling shaders `fsr` (AMD FSR 1 EASU+RCAS), `scalefx` (ScaleFX) and `anime4k` (Anime4K CNN x2 S) are built in, and screen shaders chain passes through libretro-style `.glslp` presets (#26, #27).
+
+#### Resolved issues
+
+- [#26](https://github.com/reexec/re2DJ/issues/26) A built-in fsr screen shader (AMD FSR 1 EASU) — no PR (local merge)
+- [#27](https://github.com/reexec/re2DJ/issues/27) Multi-pass screen shaders (.glslp) with fsr RCAS, ScaleFX and Anime4K — no PR (local merge)
+
+#### 1. The upscalers (#26, #27)
+- Upscalers that gather frames, like DLSS, cannot serve a 2D game without motion vectors or depth, so three that look at one frame went in: `fsr` ports `ffx_fsr1.h`'s EASU and RCAS to GLSL 1.20 (`FSR_SHARPNESS`), `scalefx` takes libretro glsl-shaders' five passes unchanged, and `anime4k` converts bloc97's five mpv hooks (weights unchanged, y turned over); all MIT, recorded in `THIRD_PARTY_NOTICES.md`.
+- Compared fullscreen at 4K: `fsr` is the sharpest (RCAS's light rim adjustable by the sharpness), `scalefx`, made for pixel art, hardens CG lettering, and `anime4k` is moderately sharper without artifacts. 4th with vsync off: `none` 799, `fsr` 688, `scalefx` 538, `anime4k` 565 fps.
+
+#### 2. The multi-pass pipeline (#27)
+- `graphics/post_shader_preset.h`: a `.glslp` subset (`shaders`, `shaderN`, `scale_typeN`/`_x`/`_y`, `scaleN`/`_x`/`_y`, `filter_linearN`, `float_framebufferN`; `#`, a BOM and precedence as libretro reads them). Built-ins became embedded file sets (`kPostShaderBuiltinFiles`, CMake embedding 17 files in 12000-byte pieces), and `LoadPostShaderPreset` resolves a preset's relative paths.
+- `OpenGlPostProcess`: per pass a program and a framebuffer target (RGBA8/RGBA16F); `UseForPresent` draws the chain and leaves only the last pass to the caller, a scaled last pass copied to the window by the stock pass; texture unit 0 `Texture`, 1 `OrigTexture`, 2 onwards `PassPrevN`; a failed target drains the GL error and restores the window target, viewport and unit 0.
+- A pre-commit review (five angles, three refuters per finding) fixed 11 confirmed findings: the `OrigTexture` regression in single-pass shaders, a failed FBO failing the whole presentation, restoring after a mid-chain failure, the parser's libretro compatibility, and document mismatches.
+
+#### 3. Verification
+- Windows x86 Debug: 6,519 unit checks with 0 failures (`post_shader_preset_test` added), 4 CTest tests; Release and the GL probe's 12 checks. WSL Linux x64, x86 and clang (warnings as errors): 5 CTest tests each. Real runs: the three shaders on 4th and 6th, a user `.glslp`, and a single-pass `OrigTexture` shader.
+
 ## v0.0.74 (2026-10-12)
 
 ### 한국어

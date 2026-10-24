@@ -63,12 +63,12 @@ uniform float NAME;
 
 ## 6. 컨텍스트와 GLSL 버전 / Context and GLSL version
 
-re2DJ의 backend는 OpenGL 2.1 compatibility 컨텍스트를 요청합니다. 2.1의 GLSL은 1.20이므로 `attribute`·`varying`·`texture2D`·`gl_FragColor` 문법이 기준이고, 내장 두 셰이더도 이 문법입니다. 드라이버가 더 높은 compatibility 버전을 주면 `#version 130` 이상을 쓰는 셰이더도 컴파일될 수 있지만 보장되지 않습니다. 컴파일에 실패하면 re2DJ는 `none`으로 그리고 이유를 OSD와 로그에 보입니다. 사양: [OpenGL 2.1](https://registry.khronos.org/OpenGL/specs/gl/glspec21.pdf), [GLSL 1.20](https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.1.20.pdf).
+re2DJ의 backend는 OpenGL 2.1 compatibility 컨텍스트를 요청합니다. 2.1의 GLSL은 1.20이므로 `attribute`·`varying`·`texture2D`·`gl_FragColor` 문법이 기준이고, 내장 `crt`·`scanline`·`fsr`·`anime4k`도 이 문법입니다. 더 높은 compatibility 컨텍스트를 주는 드라이버(NVIDIA 등)에서는 `#version 130` 셰이더(내장 `scalefx`가 그렇습니다)도 컴파일되지만, 보장되지는 않습니다.
 
-*re2DJ's backend requests an OpenGL 2.1 compatibility context, whose GLSL is 1.20, so `attribute`, `varying`, `texture2D` and `gl_FragColor` are the baseline, which both built-ins use. A driver granting a higher compatibility version may compile shaders using `#version 130` or later, but that is not guaranteed; a failed compile draws `none` with the reason in the OSD and the log. Specifications: [OpenGL 2.1](https://registry.khronos.org/OpenGL/specs/gl/glspec21.pdf), [GLSL 1.20](https://registry.khronos.org/OpenGL/specs/gl/GLSLangSpec.1.20.pdf).*
+*re2DJ's backend requests an OpenGL 2.1 compatibility context, whose GLSL is 1.20, so `attribute`, `varying`, `texture2D` and `gl_FragColor` are the baseline, which the built-in `crt`, `scanline`, `fsr` and `anime4k` use. A driver granting a higher compatibility context (NVIDIA among them) also compiles `#version 130` shaders, as the built-in `scalefx` is, but that is not guaranteed.*
 
-## 7. re2DJ가 지원하지 않는 것 / What re2DJ does not support
+## 7. 다단계 preset과 지원하지 않는 것 / Multi-pass presets and what is not supported
 
-다단계 preset(`.glslp`), `PrevTexture`·`PassPrev` 같은 이전 프레임·이전 pass 입력, LUT 텍스처, Slang(`.slang`, Vulkan 계열) 형식.
+#27부터 `.glslp` preset의 부분집합을 읽습니다: `shaders`, pass마다 `shaderN`·`scale_typeN`(`_x`/`_y`)·`scaleN`(`_x`/`_y`)·`filter_linearN`·`float_framebufferN`, 그리고 `OrigTexture`·`PassPrevNTexture`와 그 `...TextureSize`·`...InputSize`. 자세한 것은 [가이드](../guides/post-process-shaders.md)의 preset 절입니다. 지원하지 않는 것: `PrevTexture` 같은 이전 프레임 입력, LUT 텍스처, `srgb_framebuffer`·`wrap_mode`·`mipmap_input`·`alias`, Slang(`.slang`, Vulkan 계열) 형식, mpv 훅 형식.
 
-*Multi-pass presets (`.glslp`), previous-frame and previous-pass inputs such as `PrevTexture` and `PassPrev`, LUT textures, and the Slang (`.slang`, Vulkan-family) format.*
+*From #27 a subset of `.glslp` presets is read: `shaders`, and per pass `shaderN`, `scale_typeN` (`_x`/`_y`), `scaleN` (`_x`/`_y`), `filter_linearN` and `float_framebufferN`, with `OrigTexture` and `PassPrevNTexture` and their `...TextureSize` and `...InputSize`; the preset section of the [guide](../guides/post-process-shaders.md) has the details. Not supported: previous-frame inputs such as `PrevTexture`, LUT textures, `srgb_framebuffer`, `wrap_mode`, `mipmap_input` and `alias`, the Slang (`.slang`, Vulkan-family) format, and mpv hook files.*
